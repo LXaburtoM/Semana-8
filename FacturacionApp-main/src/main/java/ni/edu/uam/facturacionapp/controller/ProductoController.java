@@ -18,6 +18,7 @@ import ni.edu.uam.facturacionapp.modelo.Producto;
 
 import java.io.File;
 import java.math.BigDecimal;
+import java.sql.SQLException;
 import java.util.Optional;
 
 public class ProductoController {
@@ -149,41 +150,83 @@ public class ProductoController {
         }
     }
 
-    @FXML
-    private void guardar() {
-        if (!validarFormulario()) return;
-
+    private Producto obtenerProductoFormulario() {
         String codigo = txtCodigo.getText().trim();
-        if (existeCodigoDuplicado(codigo, null)) {
-            mensaje(Alert.AlertType.WARNING, "El código del producto ya se encuentra registrado.");
-            return;
+        String nombre = txtNombre.getText().trim();
+
+        if (codigo.isEmpty()) {
+            throw new IllegalArgumentException("El código es obligatorio.");
         }
 
-        try {
-            BigDecimal precio = new BigDecimal(txtPrecio.getText().trim());
-            int existencia = Integer.parseInt(txtExistencia.getText().trim());
+        if (nombre.isEmpty()) {
+            throw new IllegalArgumentException("El nombre del producto es obligatorio.");
+        }
 
-            Producto producto = new Producto(
-                    null,
-                    codigo,
-                    txtNombre.getText().trim(),
-                    cmbCategoria.getValue(),
-                    precio,
-                    existencia,
-                    rutaImagen,
-                    chkActivo.isSelected()
-            );
+        Categoria categoria = cmbCategoria.getSelectionModel().getSelectedItem();
+
+        if (categoria == null) {
+            throw new IllegalArgumentException("Debe seleccionar una categoría.");
+        }
+
+        BigDecimal precio;
+        try {
+            precio = new BigDecimal(txtPrecio.getText().trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("El precio debe ser un valor numérico.");
+        }
+
+        if (precio.compareTo(BigDecimal.ZERO) <= 0) {
+            throw new IllegalArgumentException("El precio de venta debe ser mayor que cero.");
+        }
+
+        int existencia;
+        try {
+            existencia = Integer.parseInt(txtExistencia.getText().trim());
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("La existencia debe ser un número entero.");
+        }
+
+        if (existencia < 0) {
+            throw new IllegalArgumentException("La existencia no puede ser negativa.");
+        }
+
+        Integer id = (productoSeleccionado != null) ? productoSeleccionado.getId() : null;
+
+        return new Producto(
+                id,
+                codigo,
+                nombre,
+                categoria,
+                precio,
+                existencia,
+                rutaImagen,
+                chkActivo.isSelected()
+        );
+    }
+
+    @FXML
+    private void guardar() {
+        try {
+            Producto producto = obtenerProductoFormulario();
+
+            if (productoDAO.existeCodigo(producto.getCodigo(), null)) {
+                mensaje(Alert.AlertType.WARNING, "Ya existe un producto con ese código.");
+                return;
+            }
 
             if (productoDAO.guardar(producto)) {
-                mensaje(Alert.AlertType.INFORMATION, "Producto guardado correctamente en la base de datos.");
+                mensaje(Alert.AlertType.INFORMATION, "La información fue almacenada correctamente.");
                 limpiar();
                 cargarProductos();
             } else {
                 mensaje(Alert.AlertType.ERROR, "No se pudo guardar el producto.");
             }
 
-        } catch (NumberFormatException e) {
-            mensaje(Alert.AlertType.ERROR, "Precio o existencia no válidos.");
+        } catch (IllegalArgumentException e) {
+            mensaje(Alert.AlertType.WARNING, e.getMessage());
+        } catch (SQLException e) {
+            mensaje(Alert.AlertType.ERROR, "No fue posible registrar el producto.");
+            e.printStackTrace();
         }
     }
 
@@ -194,27 +237,15 @@ public class ProductoController {
             return;
         }
 
-        if (!validarFormulario()) return;
-
-        String codigo = txtCodigo.getText().trim();
-        if (existeCodigoDuplicado(codigo, productoSeleccionado.getId())) {
-            mensaje(Alert.AlertType.WARNING, "El código ingresado ya pertenece a otro producto.");
-            return;
-        }
-
         try {
-            BigDecimal precio = new BigDecimal(txtPrecio.getText().trim());
-            int existencia = Integer.parseInt(txtExistencia.getText().trim());
+            Producto productoActualizado = obtenerProductoFormulario();
 
-            productoSeleccionado.setCodigo(codigo);
-            productoSeleccionado.setNombre(txtNombre.getText().trim());
-            productoSeleccionado.setCategoria(cmbCategoria.getValue());
-            productoSeleccionado.setPrecioVenta(precio);
-            productoSeleccionado.setExistencia(existencia);
-            productoSeleccionado.setRutaImagen(rutaImagen);
-            productoSeleccionado.setActivo(chkActivo.isSelected());
+            if (productoDAO.existeCodigo(productoActualizado.getCodigo(), productoActualizado.getId())) {
+                mensaje(Alert.AlertType.WARNING, "Ya existe un producto con ese código.");
+                return;
+            }
 
-            if (productoDAO.actualizar(productoSeleccionado)) {
+            if (productoDAO.actualizar(productoActualizado)) {
                 mensaje(Alert.AlertType.INFORMATION, "Producto actualizado correctamente.");
                 limpiar();
                 cargarProductos();
@@ -222,8 +253,11 @@ public class ProductoController {
                 mensaje(Alert.AlertType.ERROR, "No se pudo actualizar el producto.");
             }
 
-        } catch (NumberFormatException e) {
-            mensaje(Alert.AlertType.ERROR, "Precio o existencia no válidos.");
+        } catch (IllegalArgumentException e) {
+            mensaje(Alert.AlertType.WARNING, e.getMessage());
+        } catch (SQLException e) {
+            mensaje(Alert.AlertType.ERROR, "No fue posible actualizar el producto.");
+            e.printStackTrace();
         }
     }
 
@@ -241,12 +275,17 @@ public class ProductoController {
 
         Optional<ButtonType> respuesta = confirm.showAndWait();
         if (respuesta.isPresent() && respuesta.get() == ButtonType.OK) {
-            if (productoDAO.eliminar(productoSeleccionado.getId())) {
-                mensaje(Alert.AlertType.INFORMATION, "Producto eliminado correctamente.");
-                limpiar();
-                cargarProductos();
-            } else {
-                mensaje(Alert.AlertType.ERROR, "No se pudo eliminar el producto.");
+            try {
+                if (productoDAO.eliminar(productoSeleccionado.getId())) {
+                    mensaje(Alert.AlertType.INFORMATION, "Producto eliminado correctamente.");
+                    limpiar();
+                    cargarProductos();
+                } else {
+                    mensaje(Alert.AlertType.ERROR, "No se pudo eliminar el producto.");
+                }
+            } catch (SQLException e) {
+                mensaje(Alert.AlertType.ERROR, "No fue posible completar la operación.");
+                e.printStackTrace();
             }
         }
     }
@@ -288,45 +327,6 @@ public class ProductoController {
         } else {
             imgProducto.setImage(null);
         }
-    }
-
-    private boolean validarFormulario() {
-        if (txtCodigo.getText().isBlank() || txtNombre.getText().isBlank()
-                || txtPrecio.getText().isBlank() || txtExistencia.getText().isBlank()
-                || cmbCategoria.getValue() == null) {
-            mensaje(Alert.AlertType.WARNING, "Complete los campos obligatorios.");
-            return false;
-        }
-
-        try {
-            BigDecimal precio = new BigDecimal(txtPrecio.getText().trim());
-            if (precio.compareTo(BigDecimal.ZERO) <= 0) {
-                mensaje(Alert.AlertType.WARNING, "El precio debe ser un número mayor que cero.");
-                return false;
-            }
-        } catch (NumberFormatException e) {
-            mensaje(Alert.AlertType.WARNING, "El precio debe ser un número válido.");
-            return false;
-        }
-
-        try {
-            int existencia = Integer.parseInt(txtExistencia.getText().trim());
-            if (existencia < 0) {
-                mensaje(Alert.AlertType.WARNING, "La existencia no puede ser negativa.");
-                return false;
-            }
-        } catch (NumberFormatException e) {
-            mensaje(Alert.AlertType.WARNING, "La existencia debe ser un número entero válido.");
-            return false;
-        }
-
-        return true;
-    }
-
-    private boolean existeCodigoDuplicado(String codigo, Integer idActual) {
-        return productosMaster.stream().anyMatch(p ->
-                p.getCodigo().equalsIgnoreCase(codigo) && (idActual == null || !p.getId().equals(idActual))
-        );
     }
 
     private void mensaje(Alert.AlertType tipo, String texto) {
