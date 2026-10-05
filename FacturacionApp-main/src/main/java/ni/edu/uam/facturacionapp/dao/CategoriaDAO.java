@@ -12,7 +12,7 @@ import java.util.List;
 
 public class CategoriaDAO {
 
-    public boolean guardar(Categoria categoria) {
+    public boolean guardar(Categoria categoria) throws SQLException {
         String sql = "INSERT INTO categoria (nombre, activa) VALUES (?, ?)";
         try (Connection conn = DatabaseConnection.getConnection();
              PreparedStatement ps = conn.prepareStatement(sql)) {
@@ -20,9 +20,6 @@ public class CategoriaDAO {
             ps.setString(1, categoria.getNombre());
             ps.setBoolean(2, categoria.isActiva());
             return ps.executeUpdate() > 0;
-        } catch (SQLException e) {
-            e.printStackTrace();
-            return false;
         }
     }
 
@@ -45,5 +42,43 @@ public class CategoriaDAO {
             e.printStackTrace();
         }
         return lista;
+    }
+
+    public boolean existeNombre(String nombre, Integer idExcluido) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM categoria WHERE LOWER(nombre) = LOWER(?)";
+        if (idExcluido != null) {
+            sql += " AND id != ?";
+        }
+
+        try (Connection cn = DatabaseConnection.getConnection();
+             PreparedStatement ps = cn.prepareStatement(sql)) {
+
+            ps.setString(1, nombre);
+            if (idExcluido != null) {
+                ps.setInt(2, idExcluido);
+            }
+
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1) > 0;
+                }
+            }
+        }
+        return false;
+    }
+
+    public boolean tieneProductos(int categoriaId) throws SQLException {
+        String sql = "SELECT COUNT(*) FROM producto WHERE categoria_id = ?";
+        try (Connection cn = DatabaseConnection.getConnection();
+             PreparedStatement ps = cn.prepareStatement(sql)) {
+
+            ps.setInt(1, categoriaId);
+            try (ResultSet rs = ps.executeQuery()) {
+                if (rs.next()) {
+                    return rs.getInt(1) > 0;
+                }
+            }
+        }
+        return false;
     }
 }
