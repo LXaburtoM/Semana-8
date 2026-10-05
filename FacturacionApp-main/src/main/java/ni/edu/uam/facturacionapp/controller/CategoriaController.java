@@ -9,6 +9,9 @@ import javafx.stage.Stage;
 import ni.edu.uam.facturacionapp.dao.CategoriaDAO;
 import ni.edu.uam.facturacionapp.modelo.Categoria;
 
+import java.sql.SQLException;
+import java.util.Optional;
+
 public class CategoriaController {
 
     @FXML private TextField txtNombre;
@@ -41,18 +44,54 @@ public class CategoriaController {
     @FXML
     private void guardar() {
         String nombre = txtNombre.getText().trim();
+
         if (nombre.isEmpty()) {
-            mensaje(Alert.AlertType.WARNING, "Ingrese el nombre de la categoría.");
+            mensaje(Alert.AlertType.WARNING, "El nombre de la categoría es obligatorio.");
+            txtNombre.requestFocus();
             return;
         }
 
-        Categoria categoria = new Categoria(null, nombre, chkActiva.isSelected());
-        if (categoriaDAO.guardar(categoria)) {
-            mensaje(Alert.AlertType.INFORMATION, "Categoría guardada correctamente en PostgreSQL.");
-            limpiar();
-            cargarCategorias();
-        } else {
-            mensaje(Alert.AlertType.ERROR, "Error al guardar la categoría.");
+        try {
+            if (categoriaDAO.existeNombre(nombre, null)) {
+                mensaje(Alert.AlertType.WARNING, "Ya existe una categoría con ese nombre.");
+                return;
+            }
+
+            Categoria categoria = new Categoria(null, nombre, chkActiva.isSelected());
+            if (categoriaDAO.guardar(categoria)) {
+                mensaje(Alert.AlertType.INFORMATION, "Categoría guardada correctamente en la base de datos.");
+                limpiar();
+                cargarCategorias();
+            } else {
+                mensaje(Alert.AlertType.ERROR, "Error al guardar la categoría.");
+            }
+        } catch (SQLException e) {
+            mensaje(Alert.AlertType.ERROR, "No fue posible completar la operación.");
+            e.printStackTrace();
+        }
+    }
+
+    @FXML
+    private void eliminar() {
+        Categoria seleccionada = tblCategorias.getSelectionModel().getSelectedItem();
+
+        if (seleccionada == null) {
+            mensaje(Alert.AlertType.WARNING, "Debe seleccionar la categoría que desea eliminar.");
+            return;
+        }
+
+        try {
+            if (categoriaDAO.tieneProductos(seleccionada.getId())) {
+                mensaje(Alert.AlertType.WARNING, "No puede eliminar la categoría porque tiene productos asociados.");
+                return;
+            }
+
+            // Aquí agregarías la lógica de tu método DAO para eliminar la categoría, si lo tuvieras.
+            // if(categoriaDAO.eliminar(seleccionada.getId())) { ... }
+
+        } catch (SQLException e) {
+            mensaje(Alert.AlertType.ERROR, "No fue posible completar la operación.");
+            e.printStackTrace();
         }
     }
 
